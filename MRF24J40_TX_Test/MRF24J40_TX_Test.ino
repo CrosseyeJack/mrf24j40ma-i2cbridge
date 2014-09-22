@@ -1,0 +1,111 @@
+/**
+ * Example code for using a microchip mrf24j40 module to send simple packets
+ *
+ * Requirements: 3 pins for spi, 3 pins for reset, chip select and interrupt
+ * notifications
+ * This example file is considered to be in the public domain
+ * Originally written by Karl Palsson, karlp@tweak.net.au, March 2011
+ */
+ 
+#include <SPI.h>
+#include <mrf24j.h>
+
+const int pin_reset = 4;
+const int pin_cs = 5; // default CS pin on ATmega8/168/328
+const int pin_interrupt = 2; // default interrupt pin on ATmega8/168/328
+
+Mrf24j mrf(pin_reset, pin_cs, pin_interrupt);
+
+long last_time;
+long tx_interval = 1000;
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Hello...");
+  pinMode(8,OUTPUT);
+  digitalWrite(8,HIGH);
+  
+  mrf.reset();
+  mrf.init();
+  
+  // The personal network address
+  mrf.set_pan(0xcafe);
+
+  // This board's address
+  mrf.address16_write(0x6002); 
+  
+  // uncomment if you want to enable PA/LNA external control
+  //mrf.set_palna(true);
+
+  attachInterrupt(0, interrupt_routine, CHANGE); // interrupt 0 equivalent to pin 2(INT0) on ATmega8/168/328
+  last_time = millis();
+  interrupts();
+}
+
+void interrupt_routine() {
+    mrf.interrupt_handler(); // mrf24 object interrupt routine
+}
+
+void loop() {
+    mrf.check_flags(&handle_rx, &handle_tx);
+//    //getting the voltage reading from the temperature sensor
+    int reading = analogRead(0);
+//
+//    // converting that reading to voltage, for 3.3v arduino use 3.3
+    float icvcc = readVcc();
+    icvcc = (icvcc / 1000) + 0.025;
+    float voltage = reading * icvcc / 1024;
+    float temperatureC = (voltage - 0.5) * 100 ;  //converting from 10 mv per degree wit 500 mV offset
+//                                                  //to degrees ((volatge - 500mV) times 100);
+
+    // TODO send something here!!
+    char tbuf[5];
+    dtostrf(temperatureC, 1, 1, tbuf);
+
+//    sprintf(buf, "%f", temperatureC);
+//    
+//    byte* array = (byte*) &temperatureC;
+    char cbuf[sizeof(temperatureC)+5] = "A0:";
+    strncat(cbuf,tbuf,sizeof(temperatureC));
+    strncat(cbuf,";",1);
+    
+    for (int i = 0; i < sizeof(cbuf) - 1; i++){
+      Serial.write(cbuf[i]);
+    }
+      Serial.println();
+    
+    mrf.send16(0x6001, (char *) cbuf, strlen((char *)cbuf));
+    delay(30000);
+}
+
+void handle_rx() {
+    // data to receive, nothing to do
+}
+
+void handle_tx() {
+    if (!mrf.get_txinfo()->tx_ok) {
+        Serial.print("TX failed after ");Serial.print(mrf.get_txinfo()->retries);Serial.println(" retries\n");
+    } else {
+      Serial.println("TX Successful");
+      digitalWrite(8,!digitalRead(8));
+    }
+    
+}
+
+long readVcc() {
+  // Read 1.1V reference against AVcc
+  // set the reference to Vcc and the measurement to the internal 1.1V reference
+  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+ 
+  delay(2); // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC); // Start conversion
+  while (bit_is_set(ADCSRA,ADSC)); // measuring
+ 
+  uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH  
+  uint8_t high = ADCH; // unlocks both
+ 
+  long result = (high<<8) | low;
+ 
+  result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+  return result; // Vcc in millivolts
+}

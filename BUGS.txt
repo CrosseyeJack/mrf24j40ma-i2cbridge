@@ -1,0 +1,1 @@
+Bug with first transmit/receieve. The module notes that there is data, but the data copied into the buffer is all zero's, sure its a bug on the receieve side.
