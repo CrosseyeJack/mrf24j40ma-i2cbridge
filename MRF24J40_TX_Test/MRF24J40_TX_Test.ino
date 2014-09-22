@@ -65,15 +65,30 @@ void loop() {
 //    sprintf(buf, "%f", temperatureC);
 //    
 //    byte* array = (byte*) &temperatureC;
+
+    // Value A0 is hardcoded, I would like to select which pins are enabled by using flags stored in eeprom
+    // and can set be set from the raspberry pi.
+    // but one step at the time
     char cbuf[sizeof(temperatureC)+5] = "A0:";
-    strncat(cbuf,tbuf,sizeof(temperatureC));
+    strncat(cbuf,tbuf,sizeof(temperatureC)); // BUG.. Why am I readin tbug and the size of temperatureC?
+    // I'll look into it tomorrrow
     strncat(cbuf,";",1);
+
+    //lets create a fake Digital pin 1 and 2
+    // I only say fake cause I can't be arsed to type digitalRead(blahh);
+    char digitalpins[16];
+    strncat(digitalpins,"D0:1;D1:0;D2:1;",15);
     
-    for (int i = 0; i < sizeof(cbuf) - 1; i++){
-      Serial.write(cbuf[i]);
+    char tbuffer[sizeof(cbuf)+sizeof(digitalpins)];
+    strncat(tbuffer,cbuf,sizeof(cbuf));
+    strncat(tbuffer,digitalpins,sizeof(digitalpins));
+
+    for (int i = 0; i < sizeof(tbuffer); i++){
+      Serial.write(tbuffer[i]);
     }
       Serial.println();
     
+    // I want to store the address to send this to in the epprom.
     mrf.send16(0x6001, (char *) cbuf, strlen((char *)cbuf));
     delay(30000);
 }
