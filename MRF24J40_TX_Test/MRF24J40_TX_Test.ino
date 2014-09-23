@@ -47,6 +47,7 @@ void interrupt_routine() {
 }
 
 void loop() {
+    String output_string = "";
     mrf.check_flags(&handle_rx, &handle_tx);
 //    //getting the voltage reading from the temperature sensor
     int reading = analogRead(0);
@@ -58,9 +59,20 @@ void loop() {
     float temperatureC = (voltage - 0.5) * 100 ;  //converting from 10 mv per degree wit 500 mV offset
 //                                                  //to degrees ((volatge - 500mV) times 100);
 
-    // TODO send something here!!
+    // Convert the float into a char array
     char tbuf[5];
     dtostrf(temperatureC, 1, 1, tbuf);
+
+    // Add the Temp to the output string
+    output_string += "A0:" + String(tbuf) + ";";
+
+    // Add some fake data so I can work on the bridge app better
+    output_string +="D0:1;D1:0;D2:1;";
+
+    // Debug print the string
+    Serial.println(output_string);
+
+    // All the stuff below isn't really needed atm
 
 //    sprintf(buf, "%f", temperatureC);
 //    
@@ -69,24 +81,30 @@ void loop() {
     // Value A0 is hardcoded, I would like to select which pins are enabled by using flags stored in eeprom
     // and can set be set from the raspberry pi.
     // but one step at the time
-    char cbuf[sizeof(temperatureC)+5] = "A0:";
-    strncat(cbuf,tbuf,sizeof(temperatureC)); // BUG.. Why am I readin tbug and the size of temperatureC?
-    // I'll look into it tomorrrow
-    strncat(cbuf,";",1);
+    // char cbuf[sizeof(temperatureC)+5] = "A0:";
+    // strncat(cbuf,tbuf,sizeof(temperatureC)); // BUG.. Why am I readin tbug and the size of temperatureC?
+    // // I'll look into it tomorrrow
+    // strncat(cbuf,";",1);
 
-    //lets create a fake Digital pin 1 and 2
-    // I only say fake cause I can't be arsed to type digitalRead(blahh);
-    char digitalpins[16];
-    strncat(digitalpins,"D0:1;D1:0;D2:1;",15);
+    // //lets create a fake Digital pin 1 and 2
+    // // I only say fake cause I can't be arsed to type digitalRead(blahh);
+    // char digitalpins[16];
+    // strncat(digitalpins,"D0:1;D1:0;D2:1;",15);
     
-    char tbuffer[sizeof(cbuf)+sizeof(digitalpins)];
-    strncat(tbuffer,cbuf,sizeof(cbuf));
-    strncat(tbuffer,digitalpins,sizeof(digitalpins));
+    // char tbuffer[sizeof(cbuf)+sizeof(digitalpins)];
+    // strncat(tbuffer,cbuf,sizeof(cbuf));
+    // strncat(tbuffer,digitalpins,sizeof(digitalpins));
 
-    for (int i = 0; i < sizeof(tbuffer); i++){
-      Serial.write(tbuffer[i]);
-    }
-      Serial.println();
+    // for (int i = 0; i < sizeof(tbuffer); i++){
+    //   Serial.write(tbuffer[i]);
+    // }
+    //   Serial.println();
+
+    // string.toCharArray(buf, len) 
+
+    // Copy the output string into a char array
+    char cbuf[output_string.length()+1];
+    output_string.toCharArray(cbuf,output_string.length());
     
     // I want to store the address to send this to in the epprom.
     mrf.send16(0x6001, (char *) cbuf, strlen((char *)cbuf));
