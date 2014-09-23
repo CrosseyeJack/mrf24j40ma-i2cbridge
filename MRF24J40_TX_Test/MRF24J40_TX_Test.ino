@@ -103,8 +103,14 @@ void loop() {
     // string.toCharArray(buf, len) 
 
     // Copy the output string into a char array
-    char cbuf[output_string.length()+1];
-    output_string.toCharArray(cbuf,output_string.length());
+    char cbuf[output_string.length() + 1];
+    output_string.toCharArray(cbuf,output_string.length() + 1);
+
+    // Debug Output
+    for (int i = 0; i < sizeof(cbuf); i++){
+      Serial.write(cbuf[i]);
+    }
+      Serial.println();
     
     // I want to store the address to send this to in the epprom.
     mrf.send16(0x6001, (char *) cbuf, strlen((char *)cbuf));
