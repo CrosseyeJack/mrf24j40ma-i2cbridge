@@ -52,6 +52,9 @@ byte incoming_data_buf[255];	// Data from the Pi to the Micro
 Mrf24j mrf(pin_reset, pin_cs, pin_interrupt);
 
 void setup() {
+  
+  Serial.begin(9600);
+  Serial.println("Hello World...");
 
   // Make sure the buffers are clear (0xFF)
   for (int i = 0; i < 255; i++) {
@@ -78,8 +81,6 @@ void setup() {
   outgoing_data_buf[0x0E] = 0xBE;
   outgoing_data_buf[0x0F] = 0xEF;
 
-  Serial.begin(9600);
-
   // Setup the Interrupt Pin
   pinMode(pin_i2c_int,OUTPUT);
   digitalWrite(pin_i2c_int,LOW);
@@ -100,7 +101,6 @@ void setup() {
   outgoing_data_buf[board_address_high]=highByte(board_address);
   attachInterrupt(0, interrupt_routine, CHANGE); // interrupt 0 equivalent to pin 2(INT0) on ATmega8/168/328
   interrupts();
-  Serial.println("Hello World...");
 }
 
 void i2crequestEvent(void) {
@@ -124,8 +124,6 @@ void i2creceiveEvent(int numBytes) {
 				outgoing_data_buf[i] = 0xFF;
 				data_buff_flag = false;
 				digitalWrite(pin_i2c_int, LOW);
-				mrf.rx_enable();
-				interrupts();
 			}
 		}
 	}
@@ -133,38 +131,49 @@ void i2creceiveEvent(int numBytes) {
 
 void interrupt_routine() {
   mrf.interrupt_handler(); // mrf24 object interrupt routine
+  delay(100);
+  mrf.check_flags(&handle_rx, &handle_tx);
+  // handle_rx();
 }
 
 void loop() {
-    mrf.check_flags(&handle_rx, &handle_tx);
+  while(1);
   }
   
 void handle_rx() {
-  data_buff_flag = true;
-  digitalWrite(pin_i2c_int,HIGH);
+  // If this is the issue I will not be a happy bunny.
+  // Bad coding Dan. Very Bad Coding.
+  // Set the flags AFTER you have copied the data into the buffers.
+  // No wonder the first read was always blank.
+  // data_buff_flag = true;
+  // digitalWrite(pin_i2c_int,HIGH);
+  // Lets wipe the buffer first and then but the new data on top of that
+  for (int i = 0; i <= 255; i++) {
+    outgoing_data_buf[i] = 0xFF;
+  }
+  
   outgoing_data_buf[sender_address_low]   = lowByte(mrf.get_rxinfo()->src_addr16);
   outgoing_data_buf[sender_address_high]  = highByte(mrf.get_rxinfo()->src_addr16);
   outgoing_data_buf[lqi_low]              = lowByte(mrf.get_rxinfo()->lqi);
   outgoing_data_buf[lqi_high]             = highByte(mrf.get_rxinfo()->lqi);
   outgoing_data_buf[rssi_low]             = lowByte(mrf.get_rxinfo()->rssi);
   outgoing_data_buf[rssi_high]            = highByte(mrf.get_rxinfo()->rssi);
-  outgoing_data_buf[data_length]          = lowByte(mrf.rx_datalength());
+  outgoing_data_buf[data_length]          = mrf.rx_datalength();
   
-  // Make sure that we only copy over at max 224 bytes of data
-  int maxdata;
-  if (mrf.rx_datalength() >= 224) {
-    maxdata = 224;
-  } else {
-    maxdata = mrf.rx_datalength()+1;
-  }
-  
-  for (int i = 0; i < maxdata; i++) {
-    outgoing_data_buf[data_offset+i]      = mrf.get_rxinfo()->rx_data[i];      
-  }
-  for (int i = (data_offset+maxdata); i <= 255; i++) {
-    outgoing_data_buf[i] = 0xFF;
+  for (int i = 0; i <= mrf.rx_datalength(); i++) {
+    outgoing_data_buf[data_offset+i]      = mrf.get_rxinfo()->rx_data[i];
   }
 
+  // NOW We set the flags AFTER we have copied the data.
+  // debug out the buffer
+  for (int i = 0; i <= mrf.rx_datalength(); i++) {
+    Serial.write(outgoing_data_buf[data_offset+i]);   
+  }
+  Serial.println();
+  Serial.println("Setting int pin high");
+
+  data_buff_flag = true;
+  digitalWrite(pin_i2c_int,HIGH);
 
 }
 

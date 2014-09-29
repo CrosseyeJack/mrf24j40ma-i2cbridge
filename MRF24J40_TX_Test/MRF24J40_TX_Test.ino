@@ -23,6 +23,7 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Hello...");
   pinMode(8,OUTPUT);
+  pinMode(7,INPUT);
   digitalWrite(8,HIGH);
   
   mrf.reset();
@@ -64,10 +65,11 @@ void loop() {
     dtostrf(temperatureC, 1, 1, tbuf);
 
     // Add the Temp to the output string
-    output_string += "A0:" + String(tbuf) + ";";
+    output_string += "A0:" + String(tbuf) + ";D7:"+digitalRead(7)+";";
+
 
     // Add some fake data so I can work on the bridge app better
-    output_string +="D0:1;D1:0;D2:1;";
+    // output_string +="D0:1;D1:0;D2:1;";
 
     // Debug print the string
     Serial.println(output_string);
