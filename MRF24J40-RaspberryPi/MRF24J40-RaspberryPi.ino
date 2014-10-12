@@ -13,6 +13,7 @@
  * Tidy up the code, this was more of an experiment to see if I could use i2c as a bride for the MFR24j40 so it
  * contains sloppy code. - KINDA DONE
  * Store the PAN and Radio Addresses in EEPROM so they don't need to be set every time
+ * First Sweep at Cleanup
  */
 
 #define pan_address_low     0x10
@@ -41,8 +42,6 @@ const int pin_interrupt = 2;
 #define pin_i2c_int 6
 boolean data_buff_flag;
 
-char i2cbuff[100];
-
 word pan_address   = 0xcafe;
 word board_address = 0x6001;
 
@@ -52,10 +51,11 @@ byte incoming_data_buf[255];	// Data from the Pi to the Micro
 Mrf24j mrf(pin_reset, pin_cs, pin_interrupt);
 
 void setup() {
+  data_buff_flag = false;
+  // Setup the Interrupt Pin
+  pinMode(pin_i2c_int,OUTPUT);
+  digitalWrite(pin_i2c_int,LOW);
   
-  Serial.begin(9600);
-  Serial.println("Hello World...");
-
   // Make sure the buffers are clear (0xFF)
   for (int i = 0; i < 255; i++) {
     outgoing_data_buf[i] = 0xFF;
@@ -80,10 +80,6 @@ void setup() {
   outgoing_data_buf[0x0D] = 0xAD;
   outgoing_data_buf[0x0E] = 0xBE;
   outgoing_data_buf[0x0F] = 0xEF;
-
-  // Setup the Interrupt Pin
-  pinMode(pin_i2c_int,OUTPUT);
-  digitalWrite(pin_i2c_int,LOW);
   
   // Setup i2c
   Wire.begin(0x42);
@@ -92,8 +88,11 @@ void setup() {
   
   // Setup mrf24j40ma
   mrf.reset();
+  delay(25);
   mrf.init();
+  delay(25);
   mrf.set_pan(pan_address); // Pan Address
+  delay(25);
   mrf.address16_write(board_address); // Board Address
   outgoing_data_buf[pan_address_low]=lowByte(pan_address);
   outgoing_data_buf[pan_address_high]=highByte(pan_address);
@@ -132,13 +131,12 @@ void i2creceiveEvent(int numBytes) {
 void interrupt_routine() {
   mrf.interrupt_handler(); // mrf24 object interrupt routine
   delay(100);
-  mrf.check_flags(&handle_rx, &handle_tx);
   // handle_rx();
 }
 
 void loop() {
-  while(1);
-  }
+  mrf.check_flags(&handle_rx, &handle_tx);
+}
   
 void handle_rx() {
   // If this is the issue I will not be a happy bunny.
@@ -164,13 +162,7 @@ void handle_rx() {
     outgoing_data_buf[data_offset+i]      = mrf.get_rxinfo()->rx_data[i];
   }
 
-  // NOW We set the flags AFTER we have copied the data.
-  // debug out the buffer
-  for (int i = 0; i <= mrf.rx_datalength(); i++) {
-    Serial.write(outgoing_data_buf[data_offset+i]);   
-  }
-  Serial.println();
-  Serial.println("Setting int pin high");
+  delay(50);
 
   data_buff_flag = true;
   digitalWrite(pin_i2c_int,HIGH);
@@ -179,4 +171,5 @@ void handle_rx() {
 
 void handle_tx() {
   // code to transmit, nothing to do
+  // Placeholder for the code to talk to the other remotes
 }
