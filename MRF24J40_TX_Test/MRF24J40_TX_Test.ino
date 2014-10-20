@@ -45,9 +45,6 @@ void setup() {
 
   // This board's address
   mrf.address16_write(0x6003); 
-  
-  // uncomment if you want to enable PA/LNA external control
-  //mrf.set_palna(true);
 
   attachInterrupt(0, interrupt_routine, CHANGE); // interrupt 0 equivalent to pin 2(INT0) on ATmega8/168/328
   last_time = millis();
@@ -62,16 +59,6 @@ void loop() {
     String output_string = "";
     mrf.check_flags(&handle_rx, &handle_tx);
     double Irms = emon1.calcIrms(1480);  // Calculate Irms only
-//    //getting the voltage reading from the temperature sensor
-//     int reading = analogRead(0);
-// //
-// //    // converting that reading to voltage, for 3.3v arduino use 3.3
-//     float icvcc = readVcc();
-//     icvcc = (icvcc / 1000) + 0.025;
-//     float voltage = reading * icvcc / 1024;
-//     float temperatureC = (voltage - 0.5) * 100 ;  //converting from 10 mv per degree wit 500 mV offset
-// //                                                  //to degrees ((volatge - 500mV) times 100);
-
 
     Serial.print(Irms*230.0);        // Apparent power
     Serial.print(" ");
@@ -89,45 +76,6 @@ void loop() {
 
     // Add the Temp to the output string
     output_string += "PA:" + String(tbuf) + ";";
-
-    // ;PI:"+digitalRead(9)+";";
-
-
-    // Add some fake data so I can work on the bridge app better
-    // output_string +="D0:1;D1:0;D2:1;";
-
-    // Debug print the string
-    // Serial.println(output_string);
-
-    // All the stuff below isn't really needed atm
-
-//    sprintf(buf, "%f", temperatureC);
-//    
-//    byte* array = (byte*) &temperatureC;
-
-    // Value A0 is hardcoded, I would like to select which pins are enabled by using flags stored in eeprom
-    // and can set be set from the raspberry pi.
-    // but one step at the time
-    // char cbuf[sizeof(temperatureC)+5] = "A0:";
-    // strncat(cbuf,tbuf,sizeof(temperatureC)); // BUG.. Why am I readin tbug and the size of temperatureC?
-    // // I'll look into it tomorrrow
-    // strncat(cbuf,";",1);
-
-    // //lets create a fake Digital pin 1 and 2
-    // // I only say fake cause I can't be arsed to type digitalRead(blahh);
-    // char digitalpins[16];
-    // strncat(digitalpins,"D0:1;D1:0;D2:1;",15);
-    
-    // char tbuffer[sizeof(cbuf)+sizeof(digitalpins)];
-    // strncat(tbuffer,cbuf,sizeof(cbuf));
-    // strncat(tbuffer,digitalpins,sizeof(digitalpins));
-
-    // for (int i = 0; i < sizeof(tbuffer); i++){
-    //   Serial.write(tbuffer[i]);
-    // }
-    //   Serial.println();
-
-    // string.toCharArray(buf, len) 
 
     // Copy the output string into a char array
     char cbuf[output_string.length() + 1];
@@ -156,21 +104,3 @@ void handle_tx() {
     }
     
 }
-
-// long readVcc() {
-//   // Read 1.1V reference against AVcc
-//   // set the reference to Vcc and the measurement to the internal 1.1V reference
-//   ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
- 
-//   delay(2); // Wait for Vref to settle
-//   ADCSRA |= _BV(ADSC); // Start conversion
-//   while (bit_is_set(ADCSRA,ADSC)); // measuring
- 
-//   uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH  
-//   uint8_t high = ADCH; // unlocks both
- 
-//   long result = (high<<8) | low;
- 
-//   result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
-//   return result; // Vcc in millivolts
-// }
