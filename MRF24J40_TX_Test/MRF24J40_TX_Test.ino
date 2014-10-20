@@ -75,8 +75,10 @@ void loop() {
     Serial.print(" ");
     Serial.println(Irms);          // Irms
 //     // Convert the float into a char array
-    char tbuf[8];
-    dtostrf(Irms, 2, 3, tbuf);
+    char tbuf[16];
+    dtostrf(Irms, 5, 3, tbuf);
+// I need to make sure that tbuf is termated but for know I am cheating and just expanding the size of the char array
+
     // Add the Temp to the output string
     output_string += "PA:" + String(tbuf) + ";";
 
