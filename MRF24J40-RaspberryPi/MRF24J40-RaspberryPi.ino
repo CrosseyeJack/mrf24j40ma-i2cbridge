@@ -64,8 +64,8 @@ void setup() {
   
   // Make sure the buffers are clear (0xFF)
   for (int i = 0; i < 255; i++) {
-    outgoing_data_buf[i] = 0xFF;
-    incoming_data_buf[i] = 0xFF;
+    outgoing_data_buf[i] = 0x00;
+    incoming_data_buf[i] = 0x00;
   }
 
   // For a test make put "header" in the top of the output data
@@ -145,8 +145,8 @@ void i2creceiveEvent(int numBytes) { // Write to Micro Command
 		byte data = Wire.read();
 
 		if (address == 0xFF && data == 0xFF) {
-			for (int i = 32; i <= 255; i++) {
-				outgoing_data_buf[i] = 0xFF;
+			for (int i = 16; i <= 255; i++) {
+				outgoing_data_buf[i] = 0x00;
 			}
         digitalWrite(pin_i2c_int, LOW);
         errorcheck_count = 0;
@@ -168,8 +168,8 @@ void handle_rx() {
   // data_buff_flag = true;
   // digitalWrite(pin_i2c_int,HIGH);
   // Lets wipe the buffer first and then but the new data on top of that
-  for (int i = 0; i <= 255; i++) {
-    outgoing_data_buf[i] = 0xFF;
+  for (int i = 16; i <= 255; i++) {
+    outgoing_data_buf[i] = 0x00;
   }
   
   outgoing_data_buf[sender_address_low]   = lowByte(mrf.get_rxinfo()->src_addr16);
