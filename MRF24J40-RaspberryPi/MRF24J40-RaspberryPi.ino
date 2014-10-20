@@ -36,11 +36,11 @@
 #include <Wire.h>
 
 const int pin_reset = 4;
-const int pin_cs = 5;
+const int pin_cs = 10;
 const int pin_interrupt = 2;
+#define led_blink 8
 
 #define pin_i2c_int 6
-boolean data_buff_flag;
 
 word pan_address   = 0xcafe;
 word board_address = 0x6001;
@@ -48,13 +48,19 @@ word board_address = 0x6001;
 byte outgoing_data_buf[255];	// Data from the Micro to the Pi
 byte incoming_data_buf[255];	// Data from the Pi to the Micro
 
+int loop_count = 0;
+bool led_state = false;
+
+int errorcheck_count = 0;
+
 Mrf24j mrf(pin_reset, pin_cs, pin_interrupt);
 
 void setup() {
-  data_buff_flag = false;
+  delay(5000);
   // Setup the Interrupt Pin
   pinMode(pin_i2c_int,OUTPUT);
   digitalWrite(pin_i2c_int,LOW);
+  pinMode(led_blink, OUTPUT);
   
   // Make sure the buffers are clear (0xFF)
   for (int i = 0; i < 255; i++) {
@@ -102,7 +108,25 @@ void setup() {
   interrupts();
 }
 
-void i2crequestEvent(void) {
+
+void loop() {
+  mrf.check_flags(&handle_rx, &handle_tx);
+  if (++loop_count == 5) {
+    loop_count = 0;
+    // Toogle LED
+    digitalWrite(led_blink, !digitalRead(led_blink));
+  }
+
+  if (digitalRead(pin_i2c_int)) {
+    if (++errorcheck_count == 10) {
+      errorcheck_count = 0;
+      digitalWrite(pin_i2c_int, LOW);
+    }
+  }
+  delay(100);
+}
+
+void i2crequestEvent(void) { // Request for data from buffer
   while(Wire.available() > 0) {
     // Send the data requested from the outgoing_data_buf
     byte c = Wire.read();
@@ -114,28 +138,26 @@ void i2crequestEvent(void) {
   }
 }
 
-void i2creceiveEvent(int numBytes) {
+void i2creceiveEvent(int numBytes) { // Write to Micro Command
+  // Need to do some checks here, I think this is whats is fucking things up.
 	if (numBytes == 2) {
 		byte address = Wire.read();
 		byte data = Wire.read();
+
 		if (address == 0xFF && data == 0xFF) {
-			for (int i = 0x20; i <= 255; i++) {
+			for (int i = 32; i <= 255; i++) {
 				outgoing_data_buf[i] = 0xFF;
-				data_buff_flag = false;
-				digitalWrite(pin_i2c_int, LOW);
 			}
+        digitalWrite(pin_i2c_int, LOW);
+        errorcheck_count = 0;
 		}
-	}
+	} 
 }
 
 void interrupt_routine() {
   mrf.interrupt_handler(); // mrf24 object interrupt routine
   delay(100);
   // handle_rx();
-}
-
-void loop() {
-  mrf.check_flags(&handle_rx, &handle_tx);
 }
   
 void handle_rx() {
@@ -164,7 +186,7 @@ void handle_rx() {
 
   delay(50);
 
-  data_buff_flag = true;
+  errorcheck_count = 0;
   digitalWrite(pin_i2c_int,HIGH);
 
 }

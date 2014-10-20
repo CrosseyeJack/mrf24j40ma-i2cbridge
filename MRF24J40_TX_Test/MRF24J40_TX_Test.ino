@@ -14,9 +14,9 @@
 #include <mrf24j.h>
 #include "EmonLib.h"  // Include Emon Library
 
-const int pin_reset     = 9;
-const int pin_cs        = 8;
-const int pin_interrupt = 2;
+const int pin_reset = 4;
+const int pin_cs = 10; // default CS pin on ATmega8/168/328
+const int pin_interrupt = 2; // default interrupt pin on ATmega8/168/328
 Mrf24j mrf(pin_reset, pin_cs, pin_interrupt); // Set up the MRF24J Module
 EnergyMonitor emon1;                          // Create EnergyMonitor instance
 
@@ -25,15 +25,18 @@ long tx_interval = 1000;
 boolean contact_int = false;
 
 void setup() {
-  mrf.reset();  // Reset and Init the Radio Module
-  mrf.init();
+  Serial.begin(9600);
+  Serial.print("hello ");
+  for (int i=0; i<9; i++,delay(1000))
+    Serial.print(".");
+  Serial.println();
   emon1.current(1, 111.1);             // Current: input pin, calibration.
   double Irms = emon1.calcIrms(1480);  // Calculate Irms only
-  pinMode(9, INPUT);
-  pinMode(8,OUTPUT);
-  pinMode(7,OUTPUT);
-  digitalWrite(7, LOW);
-  digitalWrite(8,HIGH);
+
+
+  delay(10);
+  mrf.reset();  // Reset and Init the Radio Module
+  mrf.init();
   
   // The personal network address
   mrf.set_pan(0xcafe);
@@ -128,7 +131,7 @@ void loop() {
     
     // I want to store the address to send this to in the epprom.
     mrf.send16(0x6001, (char *) cbuf, strlen((char *)cbuf));
-    delay(10000);
+    delay(5000);
 }
 
 void handle_rx() {
@@ -140,25 +143,24 @@ void handle_tx() {
         Serial.print("TX failed after ");Serial.print(mrf.get_txinfo()->retries);Serial.println(" retries\n");
     } else {
       Serial.println("TX Successful");
-      digitalWrite(8,!digitalRead(8));
     }
     
 }
 
-long readVcc() {
-  // Read 1.1V reference against AVcc
-  // set the reference to Vcc and the measurement to the internal 1.1V reference
-  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+// long readVcc() {
+//   // Read 1.1V reference against AVcc
+//   // set the reference to Vcc and the measurement to the internal 1.1V reference
+//   ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
  
-  delay(2); // Wait for Vref to settle
-  ADCSRA |= _BV(ADSC); // Start conversion
-  while (bit_is_set(ADCSRA,ADSC)); // measuring
+//   delay(2); // Wait for Vref to settle
+//   ADCSRA |= _BV(ADSC); // Start conversion
+//   while (bit_is_set(ADCSRA,ADSC)); // measuring
  
-  uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH  
-  uint8_t high = ADCH; // unlocks both
+//   uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH  
+//   uint8_t high = ADCH; // unlocks both
  
-  long result = (high<<8) | low;
+//   long result = (high<<8) | low;
  
-  result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
-  return result; // Vcc in millivolts
-}
+//   result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+//   return result; // Vcc in millivolts
+// }
