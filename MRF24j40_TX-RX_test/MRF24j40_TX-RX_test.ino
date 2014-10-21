@@ -13,12 +13,14 @@
 #include <SPI.h>
 #include <mrf24j.h>
 #include "EmonLib.h"  // Include Emon Library
+#include <LiquidCrystal.h>
 
 const int pin_reset = 4;
 const int pin_cs = 10; // default CS pin on ATmega8/168/328
 const int pin_interrupt = 2; // default interrupt pin on ATmega8/168/328
 Mrf24j mrf(pin_reset, pin_cs, pin_interrupt); // Set up the MRF24J Module
 EnergyMonitor emon1;                          // Create EnergyMonitor instance
+LiquidCrystal lcd(5, 6, 7, 8, 9, A5);
 
 char tbuf[16];
 byte incoming_data_buf[255];
@@ -30,9 +32,11 @@ boolean contact_int = false;
 void setup() {
   Serial.begin(9600);
   Serial.print("hello ");
+  lcd.begin(20, 4);
   for (int i=0; i<9; i++,delay(1000))
     Serial.print(".");
   Serial.println();
+  lcd.clear();
   emon1.current(1, 111.1);             // Current: input pin, calibration.
   double Irms = emon1.calcIrms(1480);  // Calculate Irms only
 
@@ -57,46 +61,47 @@ void interrupt_routine() {
 }
 
 void loop() {
-    String output_string = "";
-    mrf.check_flags(&handle_rx, &handle_tx);
-    double Irms = emon1.calcIrms(1480);  
+    // String output_string = "";
+    // double Irms = emon1.calcIrms(1480);  
 
-    Serial.print(Irms*230.0);        // Apparent power
-    Serial.print(" ");
-    Serial.println(Irms);          // Irms
+    // Serial.print(Irms*230.0);        // Apparent power
+    // Serial.print(" ");
+    // Serial.println(Irms);          // Irms
 
 
-    // Clear the buffer
-    for (int i = 0; i<16; i++) {
-      tbuf[i]=0x00;
-    }
+    // // Clear the buffer
+    // for (int i = 0; i<16; i++) {
+    //   tbuf[i]=0x00;
+    // }
     
-    //     // Convert the float into a char array
-    dtostrf(Irms, 5, 3, tbuf);
-    // I need to make sure that tbuf is termated but for know I am cheating and just expanding the size of the char array
+    // //     // Convert the float into a char array
+    // dtostrf(Irms, 5, 3, tbuf);
+    // // I need to make sure that tbuf is termated but for know I am cheating and just expanding the size of the char array
 
-    // Add the Temp to the output string
-    output_string += "PA:" + String(tbuf) + ";";
+    // // Add the Temp to the output string
+    // output_string += "PA:" + String(tbuf) + ";";
 
-    // Copy the output string into a char array
-    char cbuf[output_string.length() + 1];
-    output_string.toCharArray(cbuf,output_string.length() + 1);
+    // // Copy the output string into a char array
+    // char cbuf[output_string.length() + 1];
+    // output_string.toCharArray(cbuf,output_string.length() + 1);
 
-    // Debug Output
-    for (int i = 0; i < sizeof(cbuf); i++){
-      Serial.write(cbuf[i]);
-    }
-      Serial.println();
+    // // Debug Output
+    // for (int i = 0; i < sizeof(cbuf); i++){
+    //   Serial.write(cbuf[i]);
+    // }
+    //   Serial.println();
     
     // I want to store the address to send this to in the epprom.
     //mrf.send16(0x6001, (char *) cbuf, strlen((char *)cbuf));
+    mrf.check_flags(&handle_rx, &handle_tx);
     delay(5000);
 }
 
 void handle_rx() {
 
-  if (mrf.get_rxinfo()->src_addr16 != 6001) { // Check if the data came from "openHab"
+  if (mrf.get_rxinfo()->src_addr16 != 0x6001) { // Check if the data came from "openHab"
     Serial.println("Sender != 6001");
+    Serial.println(mrf.get_rxinfo()->src_addr16);
     return;
   }
 
@@ -106,17 +111,35 @@ void handle_rx() {
     return;
   }
 
+  // Wipe the buffer
+  for (int i = 0; i < 255; i++) {
+    incoming_data_buf[i] = 0x00;
+  }
+
   // Copy the data into the incoming data buffer
   for (int i = 0; i<mrf.rx_datalength(); i++) {
     incoming_data_buf[i] = mrf.get_rxinfo()->rx_data[i];
   }
 
+  if(incoming_data_buf[0] == '\0') {
+    // First char null Just return :-p
+    Serial.println("First char = blank");
+    return;
+  }
+
+  lcd.clear();
+  lcd.setCursor(0,0);
+
   // Print out the data for testing
-  Serial.println("Data:");
-  for (int i = 0; i<255; i++) {
-    Serial.print(incoming_data_buf[i]);
+  Serial.print("Data: ");
+  for (int i = 0; i<mrf.rx_datalength(); i++) {
+    lcd.write(incoming_data_buf[i]);
+    Serial.write(incoming_data_buf[i]);
   }
   Serial.println();
+}
+
+
 
   // Check the data and send it to the LCD
   // I need to decide on which i/o pins I will be using for the LCD
@@ -140,7 +163,7 @@ void handle_rx() {
     // }
 
     // delay(50);
-}
+// }
 
 void handle_tx() {
     if (!mrf.get_txinfo()->tx_ok) {
