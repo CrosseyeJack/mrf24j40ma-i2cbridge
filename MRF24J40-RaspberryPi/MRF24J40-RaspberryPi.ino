@@ -53,9 +53,15 @@ bool led_state = false;
 
 int errorcheck_count = 0;
 
+int tx_loop = 0;
+
+// test counter
+int counter = 0;
+
 Mrf24j mrf(pin_reset, pin_cs, pin_interrupt);
 
 void setup() {
+  Serial.begin(9600);
   delay(5000);
   // Setup the Interrupt Pin
   pinMode(pin_i2c_int,OUTPUT);
@@ -110,19 +116,50 @@ void setup() {
 
 
 void loop() {
-  mrf.check_flags(&handle_rx, &handle_tx);
+  // Toggle a I/O so I can see that the micro is still running
   if (++loop_count == 5) {
     loop_count = 0;
-    // Toogle LED
     digitalWrite(led_blink, !digitalRead(led_blink));
   }
 
+  // Check for time out on reseting the int pin
   if (digitalRead(pin_i2c_int)) {
     if (++errorcheck_count == 10) {
       errorcheck_count = 0;
       digitalWrite(pin_i2c_int, LOW);
     }
   }
+
+  // code to transmit, nothing to do
+  // Placeholder for the code to talk to the other remotes
+  if (++tx_loop == 50) { // every ~5 seconds
+    // For now just send a test transmission. This will later be filled with useful data
+
+    // Create a useless string to transmitt
+    String output_string = "Testing: ";
+    output_string += String(++counter);
+
+    // Convert String into char array
+    char cbuf[output_string.length() + 1];
+    output_string.toCharArray(cbuf,output_string.length() + 1);
+
+    // Spit the Char array out over Serial for debugging reasons
+    for (int i = 0; i < sizeof(cbuf); i++){
+      Serial.write(cbuf[i]);
+    }
+    Serial.println();
+
+    // Tx - This shouldn't be hardcoded for for now it will do.
+    mrf.send16(0x6006, (char *) cbuf, strlen((char *)cbuf));
+
+    // Reset the loop count
+    tx_loop = 0;
+  }
+
+  // Check the flags
+  mrf.check_flags(&handle_rx, &handle_tx);
+
+  // Delay the loop
   delay(100);
 }
 
@@ -192,6 +229,9 @@ void handle_rx() {
 }
 
 void handle_tx() {
-  // code to transmit, nothing to do
-  // Placeholder for the code to talk to the other remotes
+  if (!mrf.get_txinfo()->tx_ok) {
+    Serial.print("TX failed after ");Serial.print(mrf.get_txinfo()->retries);Serial.println(" retries\n");
+  } else {
+    Serial.println("TX Successful");
+  }
 }
