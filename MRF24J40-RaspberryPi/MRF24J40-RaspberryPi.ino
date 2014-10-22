@@ -14,6 +14,9 @@
  * contains sloppy code. - KINDA DONE
  * Store the PAN and Radio Addresses in EEPROM so they don't need to be set every time
  * First Sweep at Cleanup
+
+ Yeah I know that incoming/outgoing buffers are kind labeled the wrong way around. Think of it as incoming and outgoing
+ of the micro and not in the sense of incoming/going in the sense of the raspberry pi. I might refactor this later.
  */
 
 #define pan_address_low     0x10
@@ -54,6 +57,7 @@ bool led_state = false;
 int errorcheck_count = 0;
 
 int tx_loop = 0;
+bool tx_flag = false;
 
 // test counter
 int counter = 0;
@@ -62,7 +66,7 @@ Mrf24j mrf(pin_reset, pin_cs, pin_interrupt);
 
 void setup() {
   Serial.begin(9600);
-  delay(5000);
+
   // Setup the Interrupt Pin
   pinMode(pin_i2c_int,OUTPUT);
   digitalWrite(pin_i2c_int,LOW);
@@ -98,6 +102,9 @@ void setup() {
   Wire.onReceive(i2creceiveEvent);
   Wire.onRequest(i2crequestEvent); // register wire.request interrupt event
   
+
+  delay(2500);
+
   // Setup mrf24j40ma
   mrf.reset();
   delay(25);
@@ -116,6 +123,8 @@ void setup() {
 
 
 void loop() {
+  // Check the flags
+  mrf.check_flags(&handle_rx, &handle_tx);
   // Toggle a I/O so I can see that the micro is still running
   if (++loop_count == 5) {
     loop_count = 0;
@@ -130,34 +139,20 @@ void loop() {
     }
   }
 
-  // code to transmit, nothing to do
-  // Placeholder for the code to talk to the other remotes
-  if (++tx_loop == 50) { // every ~5 seconds
-    // For now just send a test transmission. This will later be filled with useful data
 
-    // Create a useless string to transmitt
-    String output_string = "This is a long test:\n         This is a long test:";
-    output_string += String(++counter);
 
-    // Convert String into char array
-    char cbuf[output_string.length() + 1];
-    output_string.toCharArray(cbuf,output_string.length() + 1);
-
-    // Spit the Char array out over Serial for debugging reasons
-    for (int i = 0; i < sizeof(cbuf); i++){
-      Serial.write(cbuf[i]);
+  if (tx_flag == true) {
+    // Serial.println("sending...");
+    for (int i=0; i<sizeof(incoming_data_buf); i++) {
+      Serial.write(incoming_data_buf[i]);
+      if (incoming_data_buf[i]==0x00) break;
     }
     Serial.println();
+    mrf.send16(0x6006, (char *) incoming_data_buf, strlen((char *)incoming_data_buf));
 
-    // Tx - This shouldn't be hardcoded for for now it will do.
-    mrf.send16(0x6006, (char *) cbuf, strlen((char *)cbuf));
-
-    // Reset the loop count
-    tx_loop = 0;
+    // Reset the flag
+    tx_flag = false;
   }
-
-  // Check the flags
-  mrf.check_flags(&handle_rx, &handle_tx);
 
   // Delay the loop
   delay(100);
@@ -181,20 +176,32 @@ void i2creceiveEvent(int numBytes) { // Write to Micro Command
 		byte address = Wire.read();
 		byte data = Wire.read();
 
-		if (address == 0xFF && data == 0xFF) {
-			for (int i = 16; i <= 255; i++) {
+		if (address == 0xFF && data == 0xFF) { // Flush the outgoing data buffer
+			for (int i = 16; i < 255; i++) {
 				outgoing_data_buf[i] = 0x00;
 			}
         digitalWrite(pin_i2c_int, LOW);
         errorcheck_count = 0;
-		}
+		} else if (address == 0xFF && data == 0xFB) { // Copy the data out of the buffer and TX it.
+      // As this is an interupt I'm going to just set a flag and check for the flag in the main code.
+      tx_flag = true;
+    } else if (address == 0xFF && data == 0xFD) {
+          // Wipe the TX Buffer(s)
+      for (int i = 0; i < 255; i++) {
+        incoming_data_buf[i] = 0x00;
+      }
+    } else {
+      // Copy the data into the incomping data buffer
+      incoming_data_buf[address] = data;
+      Serial.print("Addy: 0x");Serial.print(address,HEX);Serial.print(" Data: 0x");Serial.print(data,HEX);
+      Serial.print(" Stored: 0x");Serial.print(incoming_data_buf[address],HEX);Serial.print(" ASCII: ");
+      Serial.write(incoming_data_buf[address]);Serial.println();
+    }
 	} 
 }
 
 void interrupt_routine() {
   mrf.interrupt_handler(); // mrf24 object interrupt routine
-  delay(100);
-  // handle_rx();
 }
   
 void handle_rx() {
@@ -205,7 +212,7 @@ void handle_rx() {
   // data_buff_flag = true;
   // digitalWrite(pin_i2c_int,HIGH);
   // Lets wipe the buffer first and then but the new data on top of that
-  for (int i = 16; i <= 255; i++) {
+  for (int i = 16; i < 255; i++) {
     outgoing_data_buf[i] = 0x00;
   }
   
@@ -217,7 +224,7 @@ void handle_rx() {
   outgoing_data_buf[rssi_high]            = highByte(mrf.get_rxinfo()->rssi);
   outgoing_data_buf[data_length]          = mrf.rx_datalength();
   
-  for (int i = 0; i <= mrf.rx_datalength(); i++) {
+  for (int i = 0; i < mrf.rx_datalength(); i++) {
     outgoing_data_buf[data_offset+i]      = mrf.get_rxinfo()->rx_data[i];
   }
 
