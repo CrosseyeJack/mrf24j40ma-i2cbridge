@@ -29,14 +29,17 @@ long last_time;
 long tx_interval = 1000;
 boolean contact_int = false;
 
+int lcdchar = 0;
+int lcdline = 0;
+bool lcd_overflow = false;
+
 void setup() {
   Serial.begin(9600);
-  Serial.print("hello ");
   lcd.begin(20, 4);
-  for (int i=0; i<9; i++,delay(1000))
-    Serial.print(".");
-  Serial.println();
-  lcd.clear();
+  for (int i=0; i<9; i++,delay(1000)) {
+    lcdwrite(0x2E);
+  }
+  lcdclear();
   emon1.current(1, 111.1);             // Current: input pin, calibration.
   double Irms = emon1.calcIrms(1480);  // Calculate Irms only
 
@@ -100,13 +103,10 @@ void loop() {
 void handle_rx() {
 
   if (mrf.get_rxinfo()->src_addr16 != 0x6001) { // Check if the data came from "openHab"
-    Serial.println("Sender != 6001");
-    Serial.println(mrf.get_rxinfo()->src_addr16);
     return;
   }
 
   if (mrf.rx_datalength() > 255) { // Check the data length
-    Serial.print("Data Too Large: ");
     Serial.println(mrf.rx_datalength());
     return;
   }
@@ -121,22 +121,53 @@ void handle_rx() {
     incoming_data_buf[i] = mrf.get_rxinfo()->rx_data[i];
   }
 
-  if(incoming_data_buf[0] == '\0') {
-    // First char null Just return :-p
-    Serial.println("First char = blank");
+  if(incoming_data_buf[0] == '\0') { // First char null Just return
     return;
   }
 
+  lcdclear();
+
+  // Print out the data to the LCD Screen
+  // I could check the first byte of data to see if its something to display or something to handle internally.
+  for (int i = 0; i<mrf.rx_datalength(); i++) {
+    lcdwrite(incoming_data_buf[i]);
+  }
+}
+
+void lcdclear() {
+  lcdchar = 0;
+  lcdline = 0;
+  lcd_overflow = false;
   lcd.clear();
   lcd.setCursor(0,0);
-
-  // Print out the data for testing
-  Serial.print("Data: ");
-  for (int i = 0; i<mrf.rx_datalength(); i++) {
-    lcd.write(incoming_data_buf[i]);
-    Serial.write(incoming_data_buf[i]);
-  }
   Serial.println();
+}
+
+void lcdwrite(byte b) {
+  if (lcd_overflow == false) {
+    // Check for Line Break and other special chars
+    if (b == 0x0A) { // Line Break
+      lcdchar = 19; // Jump to "the end of the line" and let the code below handle the line break
+    } else if (lcdchar == 0 && b == 0x20) { // If we are on a new line and the char is a space, skip it
+      return;
+    } else {
+      lcd.write(b);
+    }
+    
+    Serial.write(b);
+    
+    if (++lcdchar > 19) {
+      // Need a new line
+      if (++lcdline > 3) {
+        // Need to return to 0,0
+        // I decided not to return to 0,0 but set a flag and not over write the data at the start of the screen
+        lcd_overflow = true;
+        return;
+      }
+      lcd.setCursor(0,lcdline);
+      lcdchar = 0;
+    }
+  }
 }
 
 

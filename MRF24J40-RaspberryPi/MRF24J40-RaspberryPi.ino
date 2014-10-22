@@ -136,7 +136,7 @@ void loop() {
     // For now just send a test transmission. This will later be filled with useful data
 
     // Create a useless string to transmitt
-    String output_string = "Test: ";
+    String output_string = "This is a long test:\n         This is a long test:";
     output_string += String(++counter);
 
     // Convert String into char array
