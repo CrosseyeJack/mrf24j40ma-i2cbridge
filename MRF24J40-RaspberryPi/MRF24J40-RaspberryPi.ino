@@ -57,6 +57,7 @@ int loop_count = 0;
 bool led_state = false;
 
 int errorcheck_count = 0;
+int tx_error_check=0;
 
 int tx_loop = 0;
 bool tx_flag = false;
@@ -139,13 +140,17 @@ void loop() {
     }
   }
 
-
-
   if (tx_flag == true) {
+    if (tx_error_check>3) {
+      tx_error_check = 0;
+      Serial.println("Failed CRC Check 3 times");
+      memset(incoming_data_buf, 0, sizeof(incoming_data_buf));
+      memset(data_tx, 0, sizeof(data_tx));
+      return;
+    }
     word crccheck = CRC16_checksum((char *)incoming_data_buf);
     Serial.print("CRC: ");
     Serial.println(crccheck,HEX);
-
     
     for (int i=0; i<strlen((char *)incoming_data_buf); i++) {
       Serial.print(incoming_data_buf[i],HEX);
@@ -167,8 +172,8 @@ void loop() {
     mrf.send16(0x6006, (char *) data_tx, strlen((char *)data_tx));
 
     // Reset the flag
-    memset(incoming_data_buf, 0, sizeof(incoming_data_buf));
-    memset(data_tx, 0, sizeof(data_tx));
+    // memset(incoming_data_buf, 0, sizeof(incoming_data_buf));
+    // memset(data_tx, 0, sizeof(data_tx));
     tx_flag = false;
   }
 
@@ -234,6 +239,24 @@ void handle_rx() {
   // data_buff_flag = true;
   // digitalWrite(pin_i2c_int,HIGH);
   // Lets wipe the buffer first and then but the new data on top of that
+
+  
+  // Check to see payload reads "TXOK"
+  if (mrf.rx_datalength()==4 && mrf.get_rxinfo()->rx_data[0]=='T' && mrf.get_rxinfo()->rx_data[1]=='X' && mrf.get_rxinfo()->rx_data[2]=='O' && mrf.get_rxinfo()->rx_data[3]=='K') {
+    Serial.println("TX was CRC checked on other end...");
+    tx_error_check = 0;
+    memset(incoming_data_buf, 0, sizeof(incoming_data_buf));
+    memset(data_tx, 0, sizeof(data_tx));
+    return;
+  }
+  // Check to see payload reads "TXFAIL"
+  if (mrf.rx_datalength()==6 && mrf.get_rxinfo()->rx_data[0]=='T' && mrf.get_rxinfo()->rx_data[1]=='X' && mrf.get_rxinfo()->rx_data[2]=='F' && mrf.get_rxinfo()->rx_data[3]=='A' && mrf.get_rxinfo()->rx_data[4]=='I' && mrf.get_rxinfo()->rx_data[5]=='L') {
+    Serial.println("TX failed CRC checked on other end...");
+    tx_error_check++;
+    tx_flag = true;
+    return;
+  }
+
   for (int i = 16; i < 255; i++) {
     outgoing_data_buf[i] = 0x00;
   }
@@ -245,7 +268,7 @@ void handle_rx() {
   outgoing_data_buf[rssi_low]             = lowByte(mrf.get_rxinfo()->rssi);
   outgoing_data_buf[rssi_high]            = highByte(mrf.get_rxinfo()->rssi);
   outgoing_data_buf[data_length]          = mrf.rx_datalength();
-  
+
   for (int i = 0; i < mrf.rx_datalength(); i++) {
     outgoing_data_buf[data_offset+i]      = mrf.get_rxinfo()->rx_data[i];
   }
@@ -266,10 +289,6 @@ void handle_tx() {
 
   // I want to check if the message was correctly recieved before clearing the buffer but for now.
   // Just wipe it here
-  // Wipe the TX Buffer(s)
-  for (int i = 0; i < 255; i++) {
-    incoming_data_buf[i] = 0x00;
-  }
 }
 
 

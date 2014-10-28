@@ -14,6 +14,7 @@
 #include <mrf24j.h>
 #include "EmonLib.h"  // Include Emon Library
 #include <LiquidCrystal.h>
+#include <util/crc16.h>
 
 const int pin_reset = 4;
 const int pin_cs = 10; // default CS pin on ATmega8/168/328
@@ -115,21 +116,34 @@ void handle_rx() {
     incoming_data_buf[i] = 0x00;
   }
 
-  // Copy the data into the incoming data buffer
-  for (int i = 0; i<mrf.rx_datalength(); i++) {
+  // Copy the data (apart from the last 2 bytes) into the incoming data buffer
+  for (int i = 0; i<mrf.rx_datalength()-2; i++) {
     incoming_data_buf[i] = mrf.get_rxinfo()->rx_data[i];
+  }
+
+  word crcchecksum = word(mrf.get_rxinfo()->rx_data[mrf.rx_datalength()-2],mrf.get_rxinfo()->rx_data[mrf.rx_datalength()-1]);
+  word crcchecksumcal = CRC16_checksum((char *)incoming_data_buf);
+  Serial.print("CRC: ");
+  Serial.println(crcchecksum,HEX);
+  Serial.println(crcchecksumcal,HEX);
+
+  if (crcchecksumcal==crcchecksum) {
+    Serial.println("CRC MATCH!!!");
+    lcdclear();
+    for (int i = 0; i<strlen((char *)incoming_data_buf); i++) {
+      lcdwrite(incoming_data_buf[i]);
+    }
+    Serial.println();
+    // Tell the pi we were successfull
+    mrf.send16(mrf.get_rxinfo()->src_addr16, (char *)"TXOK", 4);
+  } else {
+    Serial.println("CRC MISMATCH!!");
+    // Tell The pi to try again
+    mrf.send16(mrf.get_rxinfo()->src_addr16, (char *)"TXFAIL", 6);
   }
 
   if(incoming_data_buf[0] == '\0') { // First char null Just return
     return;
-  }
-
-  lcdclear();
-
-  // Print out the data to the LCD Screen
-  // I could check the first byte of data to see if its something to display or something to handle internally.
-  for (int i = 0; i<mrf.rx_datalength(); i++) {
-    lcdwrite(incoming_data_buf[i]);
   }
 }
 
@@ -202,4 +216,22 @@ void handle_tx() {
       Serial.println("TX Successful");
     }
     
+}
+
+uint16_t CRC16_checksum (char *string)
+{
+ size_t i;
+ uint16_t crc;
+ uint8_t c;
+ 
+crc = 0xFFFF;
+ 
+// Calculate checksum ignoring the first two $s
+ for (i = 2; i < strlen(string); i++)
+ {
+ c = string[i];
+ crc = _crc_xmodem_update (crc, c);
+ }
+ 
+return crc;
 }
