@@ -89,7 +89,7 @@ void loop() {
     
     // I want to store the address to send this to in the epprom.
     mrf.send16(0x6001, (char *) cbuf, strlen((char *)cbuf));
-    delay(5000);
+    delay(30000);
 }
 
 void handle_rx() {

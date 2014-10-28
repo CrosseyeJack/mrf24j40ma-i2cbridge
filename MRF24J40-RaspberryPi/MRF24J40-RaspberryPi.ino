@@ -37,6 +37,7 @@
 #include <SPI.h>
 #include <mrf24j.h>
 #include <Wire.h>
+#include <util/crc16.h>
 
 const int pin_reset = 4;
 const int pin_cs = 10;
@@ -50,6 +51,7 @@ word board_address = 0x6001;
 
 byte outgoing_data_buf[255];	// Data from the Micro to the Pi
 byte incoming_data_buf[255];	// Data from the Pi to the Micro
+byte data_tx[255];
 
 int loop_count = 0;
 bool led_state = false;
@@ -117,14 +119,12 @@ void setup() {
   outgoing_data_buf[pan_address_high]=highByte(pan_address);
   outgoing_data_buf[board_address_low]=lowByte(board_address);
   outgoing_data_buf[board_address_high]=highByte(board_address);
-  attachInterrupt(0, interrupt_routine, CHANGE); // interrupt 0 equivalent to pin 2(INT0) on ATmega8/168/328
+  attachInterrupt(0, interrupt_routine, FALLING); // interrupt 0 equivalent to pin 2(INT0) on ATmega8/168/328
   interrupts();
 }
 
 
-void loop() {
-  // Check the flags
-  mrf.check_flags(&handle_rx, &handle_tx);
+void loop() {  
   // Toggle a I/O so I can see that the micro is still running
   if (++loop_count == 5) {
     loop_count = 0;
@@ -142,17 +142,38 @@ void loop() {
 
 
   if (tx_flag == true) {
-    // Serial.println("sending...");
-    for (int i=0; i<sizeof(incoming_data_buf); i++) {
-      Serial.write(incoming_data_buf[i]);
-      if (incoming_data_buf[i]==0x00) break;
+    word crccheck = CRC16_checksum((char *)incoming_data_buf);
+    Serial.print("CRC: ");
+    Serial.println(crccheck,HEX);
+
+    
+    for (int i=0; i<strlen((char *)incoming_data_buf); i++) {
+      Serial.print(incoming_data_buf[i],HEX);
     }
     Serial.println();
-    mrf.send16(0x6006, (char *) incoming_data_buf, strlen((char *)incoming_data_buf));
+
+    int copycount = 0;
+    for (copycount=0; copycount<strlen((char *)incoming_data_buf); copycount++) {
+      data_tx[copycount] = incoming_data_buf[copycount];
+    }
+    data_tx[copycount++] = highByte(crccheck);
+    data_tx[copycount++] = lowByte(crccheck);
+
+    for(int i=0; i<strlen((char *)data_tx); i++) {
+      Serial.print(data_tx[i],HEX);  
+    }
+
+    Serial.println();
+    mrf.send16(0x6006, (char *) data_tx, strlen((char *)data_tx));
 
     // Reset the flag
+    memset(incoming_data_buf, 0, sizeof(incoming_data_buf));
+    memset(data_tx, 0, sizeof(data_tx));
     tx_flag = false;
   }
+
+  // Check the flags
+  mrf.check_flags(&handle_rx, &handle_tx);
 
   // Delay the loop
   delay(100);
@@ -190,12 +211,13 @@ void i2creceiveEvent(int numBytes) { // Write to Micro Command
       for (int i = 0; i < 255; i++) {
         incoming_data_buf[i] = 0x00;
       }
+      Serial.println("Buffer Cleared");
     } else {
       // Copy the data into the incomping data buffer
       incoming_data_buf[address] = data;
-      Serial.print("Addy: 0x");Serial.print(address,HEX);Serial.print(" Data: 0x");Serial.print(data,HEX);
-      Serial.print(" Stored: 0x");Serial.print(incoming_data_buf[address],HEX);Serial.print(" ASCII: ");
-      Serial.write(incoming_data_buf[address]);Serial.println();
+      // Serial.print("Addy: 0x");Serial.print(address,HEX);Serial.print(" Data: 0x");Serial.print(data,HEX);
+      // Serial.print(" Stored: 0x");Serial.print(incoming_data_buf[address],HEX);Serial.print(" ASCII: ");
+      // Serial.write(incoming_data_buf[address]);Serial.println();
     }
 	} 
 }
@@ -241,4 +263,30 @@ void handle_tx() {
   } else {
     Serial.println("TX Successful");
   }
+
+  // I want to check if the message was correctly recieved before clearing the buffer but for now.
+  // Just wipe it here
+  // Wipe the TX Buffer(s)
+  for (int i = 0; i < 255; i++) {
+    incoming_data_buf[i] = 0x00;
+  }
+}
+
+
+uint16_t CRC16_checksum (char *string)
+{
+ size_t i;
+ uint16_t crc;
+ uint8_t c;
+ 
+crc = 0xFFFF;
+ 
+// Calculate checksum ignoring the first two $s
+ for (i = 2; i < strlen(string); i++)
+ {
+ c = string[i];
+ crc = _crc_xmodem_update (crc, c);
+ }
+ 
+return crc;
 }
