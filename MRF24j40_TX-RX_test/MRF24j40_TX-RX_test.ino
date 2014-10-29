@@ -121,11 +121,13 @@ void handle_rx() {
     incoming_data_buf[i] = mrf.get_rxinfo()->rx_data[i];
   }
 
+  for (int i = 0; i<strlen((char *)incoming_data_buf); i++) {
+    Serial.write(incoming_data_buf[i]);
+  }
+  Serial.println();
+  
   word crcchecksum = word(mrf.get_rxinfo()->rx_data[mrf.rx_datalength()-2],mrf.get_rxinfo()->rx_data[mrf.rx_datalength()-1]);
   word crcchecksumcal = CRC16_checksum((char *)incoming_data_buf);
-  Serial.print("CRC: ");
-  Serial.println(crcchecksum,HEX);
-  Serial.println(crcchecksumcal,HEX);
 
   if (crcchecksumcal==crcchecksum) {
     Serial.println("CRC MATCH!!!");
@@ -152,8 +154,9 @@ void lcdclear() {
   lcdline = 0;
   lcd_overflow = false;
   lcd.clear();
-  lcd.setCursor(0,0);
+  lcd.setCursor(lcdchar,lcdline);
   Serial.println();
+  delay(10);
 }
 
 void lcdwrite(byte b) {
@@ -166,19 +169,19 @@ void lcdwrite(byte b) {
     } else {
       lcd.write(b);
     }
-    
     Serial.write(b);
     
     if (++lcdchar > 19) {
       // Need a new line
-      if (++lcdline > 3) {
+      lcd.setCursor(0,++lcdline);
+      lcdchar = 0;
+
+      if (lcdline > 3) {
         // Need to return to 0,0
         // I decided not to return to 0,0 but set a flag and not over write the data at the start of the screen
         lcd_overflow = true;
         return;
       }
-      lcd.setCursor(0,lcdline);
-      lcdchar = 0;
     }
   }
 }
