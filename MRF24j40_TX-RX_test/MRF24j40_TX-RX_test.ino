@@ -15,6 +15,28 @@
 #include "EmonLib.h"  // Include Emon Library
 #include <LiquidCrystal.h>
 #include <util/crc16.h>
+#include <avr/pgmspace.h>
+
+prog_char string_0[] PROGMEM = "TX failed after ";   // "String 0" etc are strings to store - change to suit.
+prog_char string_1[] PROGMEM = " retries";
+prog_char string_2[] PROGMEM = "TX Successful";
+prog_char string_3[] PROGMEM = "CRC MATCH!!!";
+prog_char string_4[] PROGMEM = "CRC MISMATCH!!";
+prog_char string_5[] PROGMEM = "TXOK";
+prog_char string_6[] PROGMEM = "TXFAIL";
+
+PROGMEM const char *string_table[] =     // change "string_table" name to suit
+{   
+  string_0,
+  string_1,
+  string_2,
+  string_3,
+  string_4,
+  string_5,
+  string_6
+};
+
+char strbuffer[30];    // make sure this is large enough for the largest string it must hold
 
 const int pin_reset = 4;
 const int pin_cs = 10; // default CS pin on ATmega8/168/328
@@ -121,30 +143,34 @@ void handle_rx() {
     incoming_data_buf[i] = mrf.get_rxinfo()->rx_data[i];
   }
 
-  for (int i = 0; i<strlen((char *)incoming_data_buf); i++) {
-    Serial.write(incoming_data_buf[i]);
-  }
-  Serial.println();
-  
   word crcchecksum = word(mrf.get_rxinfo()->rx_data[mrf.rx_datalength()-2],mrf.get_rxinfo()->rx_data[mrf.rx_datalength()-1]);
   word crcchecksumcal = CRC16_checksum((char *)incoming_data_buf);
 
   if (crcchecksumcal==crcchecksum) {
-    Serial.println("CRC MATCH!!!");
+    strcpy_P(strbuffer, (char*)pgm_read_word(&(string_table[3])));
+    Serial.println(strbuffer);
     lcdclear();
     for (int i = 0; i<strlen((char *)incoming_data_buf); i++) {
       lcdwrite(incoming_data_buf[i]);
     }
     Serial.println();
     // Tell the pi we were successfull
-    mrf.send16(mrf.get_rxinfo()->src_addr16, (char *)"TXOK", 4);
+    strcpy_P(strbuffer, (char*)pgm_read_word(&(string_table[5])));
+    mrf.send16(mrf.get_rxinfo()->src_addr16, strbuffer, 4);
   } else {
-    Serial.println("CRC MISMATCH!!");
+    strcpy_P(strbuffer, (char*)pgm_read_word(&(string_table[4])));
+    Serial.println(strbuffer);
     // Tell The pi to try again
-    mrf.send16(mrf.get_rxinfo()->src_addr16, (char *)"TXFAIL", 6);
+    strcpy_P(strbuffer, (char*)pgm_read_word(&(string_table[6])));
+    mrf.send16(mrf.get_rxinfo()->src_addr16, strbuffer, 6);
   }
 
-  if(incoming_data_buf[0] == '\0') { // First char null Just return
+  for (int i = 0; i<strlen((char *)incoming_data_buf); i++) {
+    Serial.write(incoming_data_buf[i]);
+  }
+  Serial.println();
+
+  if(incoming_data_buf[0] == 0x00) { // First char null Just return
     return;
   }
 }
@@ -156,22 +182,21 @@ void lcdclear() {
   lcd.clear();
   lcd.setCursor(lcdchar,lcdline);
   Serial.println();
-  delay(10);
 }
 
 void lcdwrite(byte b) {
   if (lcd_overflow == false) {
     // Check for Line Break and other special chars
-    if (b == 0x0A) { // Line Break
+    if (b == 0x0A && lcdchar != 0) { // Line Break
       lcdchar = 19; // Jump to "the end of the line" and let the code below handle the line break
-    } else if (lcdchar == 0 && b == 0x20) { // If we are on a new line and the char is a space, skip it
+    } else if (lcdchar == 0 && (b == 0x20 || b == 0x0A) ) { // If we are on a new line and the char is a space, skip it
       return;
     } else {
       lcd.write(b);
     }
     Serial.write(b);
     
-    if (++lcdchar > 19) {
+    if (++lcdchar >= 20) {
       // Need a new line
       lcd.setCursor(0,++lcdline);
       lcdchar = 0;
@@ -214,11 +239,15 @@ void lcdwrite(byte b) {
 
 void handle_tx() {
     if (!mrf.get_txinfo()->tx_ok) {
-        Serial.print("TX failed after ");Serial.print(mrf.get_txinfo()->retries);Serial.println(" retries\n");
+      strcpy_P(strbuffer, (char*)pgm_read_word(&(string_table[0])));
+      Serial.print(strbuffer);
+      Serial.print(mrf.get_txinfo()->retries);
+      strcpy_P(strbuffer, (char*)pgm_read_word(&(string_table[1])));
+      Serial.println(strbuffer);
     } else {
-      Serial.println("TX Successful");
+      strcpy_P(strbuffer, (char*)pgm_read_word(&(string_table[2])));
+      Serial.println(strbuffer);
     }
-    
 }
 
 uint16_t CRC16_checksum (char *string)
@@ -232,8 +261,8 @@ crc = 0xFFFF;
 // Calculate checksum ignoring the first two $s
  for (i = 2; i < strlen(string); i++)
  {
- c = string[i];
- crc = _crc_xmodem_update (crc, c);
+   c = string[i];
+   crc = _crc_xmodem_update (crc, c);
  }
  
 return crc;
