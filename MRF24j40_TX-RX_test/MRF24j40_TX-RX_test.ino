@@ -43,7 +43,7 @@ const int pin_cs = 10; // default CS pin on ATmega8/168/328
 const int pin_interrupt = 2; // default interrupt pin on ATmega8/168/328
 Mrf24j mrf(pin_reset, pin_cs, pin_interrupt); // Set up the MRF24J Module
 EnergyMonitor emon1;                          // Create EnergyMonitor instance
-LiquidCrystal lcd(5, 6, 7, 8, 9, A5);
+LiquidCrystal lcd(9, 6, 7, 8, A4, A5);
 
 char tbuf[16];
 byte incoming_data_buf[255];
@@ -51,23 +51,65 @@ byte incoming_data_buf[255];
 long last_time;
 long tx_interval = 1000;
 boolean contact_int = false;
+boolean door_int = false;
+
+unsigned int LCD_BL = 0;
+int lcd_bl_state = 0; // 0 = nothing (either on or off), 1 = fade up, 2 = fade down
+int lcd_bl_brightness = 0;
 
 int lcdchar = 0;
 int lcdline = 0;
-bool lcd_overflow = false;
+boolean lcd_overflow = false;
+
+boolean tick = false;
+boolean tick_8kHz = false;
+
+boolean button_state = false;
 
 void setup() {
   Serial.begin(9600);
+  pinMode(9, OUTPUT);
+  analogWrite(5,255);
+  pinMode(A3, OUTPUT);
   lcd.begin(20, 4);
   for (int i=0; i<9; i++,delay(1000)) {
     lcdwrite(0x2E);
   }
   lcdclear();
+  analogWrite(5,0);
   emon1.current(1, 111.1);             // Current: input pin, calibration.
   double Irms = emon1.calcIrms(1480);  // Calculate Irms only
 
+  cli();//stop interrupts
 
-  delay(10);
+  //set timer1 interrupt at 1Hz
+  TCCR1A = 0;// set entire TCCR1A register to 0
+  TCCR1B = 0;// same for TCCR1B
+  TCNT1  = 0;//initialize counter value to 0
+  // set compare match register for 1hz increments
+  OCR1A = 15624;// = (16*10^6) / (1*1024) - 1 (must be <65536)
+  // turn on CTC mode
+  TCCR1B |= (1 << WGM12);
+  // Set CS10 and CS12 bits for 1024 prescaler
+  TCCR1B |= (1 << CS12) | (1 << CS10);  
+  // enable timer compare interrupt
+  TIMSK1 |= (1 << OCIE1A);
+
+  //set timer2 interrupt at ~100hz
+  TCCR2A = 0;// set entire TCCR2A register to 0
+  TCCR2B = 0;// same for TCCR2B
+  TCNT2  = 0;//initialize counter value to 0
+  // set compare match register for ~100hz increments
+  OCR2A = 155;// = (16*10^6) / (2000*1024) - 1 (must be <256)
+  // turn on CTC mode
+  TCCR2A |= (1 << WGM21);
+  // Set CS21 bit for 8 prescaler
+  TCCR2B |= (1 << CS22) | (1 << CS21) | (1 << CS20);   
+  // TCCR2B |= (1 << CS01) | (1 << CS00);   
+  // enable timer compare interrupt
+  TIMSK2 |= (1 << OCIE2A);
+  sei();//allow interrupts
+
   mrf.reset();  // Reset and Init the Radio Module
   mrf.init();
   
@@ -78,12 +120,26 @@ void setup() {
   mrf.address16_write(0x6006); 
 
   attachInterrupt(0, interrupt_routine, CHANGE); // interrupt 0 equivalent to pin 2(INT0) on ATmega8/168/328
+  attachInterrupt(1, door_interrupt, CHANGE);
   last_time = millis();
   interrupts();
 }
 
+void door_interrupt() {
+  door_int = true;
+}
+
 void interrupt_routine() {
     mrf.interrupt_handler(); // mrf24 object interrupt routine
+}
+
+ISR(TIMER1_COMPA_vect) { //timer1 interrupt 1Hz
+  tick = true;
+}
+
+ISR(TIMER2_COMPA_vect) { //timer1 interrupt 8kHz
+  tick_8kHz = true;
+  digitalWrite(A3, HIGH);
 }
 
 void loop() {
@@ -120,6 +176,63 @@ void loop() {
     // I want to store the address to send this to in the epprom.
     //mrf.send16(0x6001, (char *) cbuf, strlen((char *)cbuf));
     mrf.check_flags(&handle_rx, &handle_tx);
+
+    if (tick) {
+      tick = false;
+
+      // LCD BlackLight timer decay
+      if (LCD_BL>0) {
+        LCD_BL--;
+        if (LCD_BL==0) {
+          // Dim LCD Blacklight
+          lcd_bl_state = 2;
+          lcd_bl_brightness = 255;
+        }
+      }
+
+      if (button_state) button_state = false;
+    }
+
+    if (tick_8kHz) {
+      digitalWrite(A3, LOW);
+      tick_8kHz = false;
+      if (lcd_bl_state==2) {
+        // Fade out LCD BL, brightness should be > 0
+        if (lcd_bl_brightness>0) {
+          lcd_bl_brightness--;
+          analogWrite(5, lcd_bl_brightness);
+        } else if (lcd_bl_brightness <= 0) {
+          lcd_bl_state = 0;
+        }
+      }
+    }
+
+    if (door_int) {
+      door_int = false;
+        if (digitalRead(3)) {
+          // Door Open
+          lcdclear();
+          lcd.print("DOOR OPEN");
+        } else {
+          // Door Closed
+          lcdclear();
+          lcd.print("DOOR CLOSED");
+        }
+        analogWrite(5,255);
+        lcd_bl_brightness=255;
+        lcd_bl_state=0;
+        LCD_BL = 10;
+    }
+
+    if (digitalRead(A0)) {
+      if (!button_state) {
+        button_state = true;
+        analogWrite(5,255);
+        lcd_bl_brightness=255;
+        lcd_bl_state=0;
+        LCD_BL = 10;
+      }
+    }
 }
 
 void handle_rx() {
@@ -153,6 +266,11 @@ void handle_rx() {
     for (int i = 0; i<strlen((char *)incoming_data_buf); i++) {
       lcdwrite(incoming_data_buf[i]);
     }
+    // Switch on the LCD Black Light
+    analogWrite(5,255);
+    lcd_bl_brightness=255;
+    lcd_bl_state=0;
+    LCD_BL=10;
     Serial.println();
     // Tell the pi we were successfull
     strcpy_P(strbuffer, (char*)pgm_read_word(&(string_table[5])));
